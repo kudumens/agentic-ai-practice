@@ -4,7 +4,7 @@ A private lab for building AI agents that run entirely on one Mac. n8n orchestra
 
 The aim is to learn how to build agents that complete long, multi-step tasks on confidential material without sending anything to a cloud provider.
 
-Status: planning. Nothing is installed yet. The build plan is in [PLAN.md](PLAN.md).
+Status: Phase 0 (host preparation) complete. Ollama and three models are installed and tested. The build plan is in [PLAN.md](PLAN.md).
 
 Confidence tags: **[Certain]** checked on 2026-10-03 against this machine or a primary source, **[Likely]** strong inference or third-party figure, **[Guessing]** an estimate that the lab itself still has to measure.
 
@@ -110,6 +110,7 @@ It fixes:
 - **Model quality.** Moving from a 24B to a 70B or 120B model is the largest single improvement available to a local agent.
 - **Context length.** Room for many tool descriptions, long documents and long conversations at once.
 - **Multiple models.** A large planning model and a small fast model loaded together, plus the embedding model.
+- **Local fine-tuning.** Training a model takes far more memory than running it [Likely]. On 32 GB, fine-tuning a 7B to 8B model is practical; Apple's MLX documentation shows it on this exact machine [Certain]. A 24B model is a strain [Likely]. More memory is the only way to fine-tune larger models without sending confidential training data to a cloud GPU. This is a stronger reason for 64 to 128 GB than running models is.
 
 It does not fix:
 
@@ -127,6 +128,7 @@ Local models alone do not make the lab confidential. Each of these sends data of
 | HTTP and remote MCP tools | Whatever the agent sends to them | Use only local tools on confidential agents |
 | Ollama cloud models | The entire prompt | Use only locally downloaded models. Avoid any model tagged `cloud` [Certain that such tags exist] |
 | Free hosted model tiers | The entire prompt | Never use them with confidential data |
+| Fine-tuning on a rented cloud GPU | All the training data | Fine-tune locally with MLX (PLAN Phase 8), or not at all |
 | n8n telemetry | Usage data | `N8N_DIAGNOSTICS_ENABLED=false` [Certain]. Also disable version checks and template fetching at install [Likely] |
 
 Other rules already in the plan: every port is bound to loopback only, secrets stay in a gitignored `.env`, and only the `shared/` folder is mounted into n8n. Turn on FileVault so data and backups are encrypted at rest.
@@ -159,3 +161,4 @@ That record is the justification for the purchase.
 - GPT-6 Astra coverage: <https://www.marktechpost.com/2026/09/29/openai-launches-dots-always-on-gpt-6-astra-agents-that-work-from-their-own-cloud-computers/amp/>
 - Tool use benchmark in realistic settings: <https://arxiv.org/html/2604.06185>
 - n8n self-hosted AI starter kit: <https://github.com/n8n-io/self-hosted-ai-starter-kit>
+- mlx-lm LoRA and QLoRA on Apple Silicon: <https://github.com/ml-explore/mlx-lm/blob/main/mlx_lm/LORA.md>
