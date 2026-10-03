@@ -15,22 +15,22 @@ Out of scope: production hardening, public exposure (webhook tunnels, reverse pr
 
 1. **The model server should not run in Docker on this Mac.** [Certain] Docker Desktop on macOS does not pass the Apple GPU through to containers, so Ollama in a container runs on CPU only. n8n's own starter kit tells Mac users to run Ollama on the host and point n8n at `host.docker.internal:11434`. Native Ollama uses Metal on the M1 Max and will be several times faster [Likely on the exact multiple]. Everything else runs in Docker.
 2. **Small local models are weak at multi-tool agents.** [Likely] 3B to 8B models pick the wrong tool, invent arguments, and loop once an agent has more than a handful of tools. "Many tools" on one agent is the wrong target. The realistic design is 3 to 6 tools per agent, with an orchestrator routing to sub-agents. Learning where the models break is a large part of the value of this lab.
-3. **Context length is the most common silent failure.** [Likely] Ollama's default context window is small (4,096 tokens in recent versions, verify on install). Tool schemas plus chat history overflow it and the model quietly forgets its tools. Set the context length explicitly (8,192 to 16,384) in every Ollama Chat Model node.
+3. **Context length is the most common silent failure.** [Certain] Ollama's default context window on this machine is 4,096 tokens (Ollama 0.35.1 picks it from available GPU memory, confirmed in its log on 2026-10-03). Tool schemas plus chat history overflow it and the model quietly forgets its tools. Set the context length explicitly (8,192 to 16,384) in every Ollama Chat Model node.
 
 ## 3. What this machine can do
 
 Measured today [Certain]:
 
-| Item | Value | Consequence |
-| --- | --- | --- |
-| Chip / RAM | Apple M1 Max, 32 GB unified | Models up to about 24B parameters at 4-bit fit comfortably |
-| Free disk | 222 GB | Planned model set needs about 40 GB |
-| Docker | 29.8.1, Compose v5.5.1 | Ready, nothing to install |
-| Docker VM allocation | 5 CPUs, about 7.75 GB RAM | Reduced from 15.6 GB and confirmed. Leaves room for the models |
-| System timezone | `Africa/Accra` (GMT+0, no daylight saving) | Used for `GENERIC_TIMEZONE` and `TZ` |
-| Ollama | Not installed | Install natively (Phase 0) |
-| Ports 5678, 11434, 5432, 6333, 8080 | All free | No conflicts |
-| This folder | Empty, not a git repository | Run `git init` first so config is versioned |
+| Item                                | Value                                                          | Consequence                                                                       |
+| ----------------------------------- | -------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| Chip / RAM                          | Apple M1 Max, 32 GB unified                                    | Models up to about 24B parameters at 4-bit fit comfortably                        |
+| Free disk                           | 222 GB                                                         | Planned model set needs about 40 GB                                               |
+| Docker                              | 29.8.1, Compose v5.5.1                                         | Ready, nothing to install                                                         |
+| Docker VM allocation                | 5 CPUs, about 7.75 GB RAM                                      | Reduced from 15.6 GB and confirmed. Leaves room for the models                    |
+| System timezone                     | `Africa/Accra` (GMT+0, no daylight saving)                     | Used for `GENERIC_TIMEZONE` and `TZ`                                              |
+| Ollama                              | 0.35.1 via Homebrew, running as a service on `127.0.0.1:11434` | Installed in Phase 0. Uses Metal on the M1 Max with 21.3 GiB of GPU-usable memory |
+| Ports 5678, 11434, 5432, 6333, 8080 | All free                                                       | No conflicts                                                                      |
+| This folder                         | Empty, not a git repository                                    | Run `git init` first so config is versioned                                       |
 
 Memory budget [Likely]: macOS and apps about 6 GB, Docker VM 8 GB, leaving about 18 GB for one loaded model. That fits one 24B model or two smaller ones, not both.
 
@@ -55,14 +55,14 @@ Memory budget [Likely]: macOS and apps about 6 GB, Docker VM 8 GB, leaving about
 
 ### Services
 
-| Service | Image (pinned) | Phase | Purpose |
-| --- | --- | --- | --- |
-| n8n | `docker.n8n.io/n8nio/n8n:2.41.6` | 1 | Workflow engine and agent builder. 2.41.6 is the stable release as of 2026-10-02 [Certain] |
-| postgres | `postgres:16-alpine` | 1 | n8n database, agent chat memory, and a practice database for SQL tools. Same image the n8n starter kit uses [Certain] |
-| task-runners | `n8nio/runners:2.41.6` | 3 | Runs Code node JavaScript and native Python in a sidecar. Version must match n8n exactly [Certain] |
-| qdrant | `qdrant/qdrant` (pin at install) | 4 | Vector store for RAG, with a dashboard at `:6333/dashboard` |
-| searxng | `searxng/searxng` (pin at install) | 3 | Self-hosted metasearch, no API key. JSON output must be enabled in its settings [Likely] |
-| Ollama | native, not Docker | 0 | Model server with Metal acceleration |
+| Service      | Image (pinned)                     | Phase | Purpose                                                                                                               |
+| ------------ | ---------------------------------- | ----- | --------------------------------------------------------------------------------------------------------------------- |
+| n8n          | `docker.n8n.io/n8nio/n8n:2.41.6`   | 1     | Workflow engine and agent builder. 2.41.6 is the stable release as of 2026-10-02 [Certain]                            |
+| postgres     | `postgres:16-alpine`               | 1     | n8n database, agent chat memory, and a practice database for SQL tools. Same image the n8n starter kit uses [Certain] |
+| task-runners | `n8nio/runners:2.41.6`             | 3     | Runs Code node JavaScript and native Python in a sidecar. Version must match n8n exactly [Certain]                    |
+| qdrant       | `qdrant/qdrant` (pin at install)   | 4     | Vector store for RAG, with a dashboard at `:6333/dashboard`                                                           |
+| searxng      | `searxng/searxng` (pin at install) | 3     | Self-hosted metasearch, no API key. JSON output must be enabled in its settings [Likely]                              |
+| Ollama       | native, not Docker                 | 0     | Model server with Metal acceleration                                                                                  |
 
 ### Why not use the n8n self-hosted AI starter kit as is
 
@@ -79,15 +79,15 @@ It is the right reference and this plan copies its structure, but it uses `lates
 
 All tags below exist in the Ollama library with the tools capability [Certain]. Sizes are approximate [Likely].
 
-| Model | Size | Role |
-| --- | --- | --- |
-| `llama3.2:3b` | 2 GB | Fast smoke tests. Expect tool-calling failures |
-| `llama3.1:8b` | 5 GB | Llama baseline for tool calling |
-| `mistral:7b` | 4.5 GB | Mistral baseline |
-| `mistral-nemo:12b` | 7 GB | Mid-size Mistral, larger context |
-| `mistral-small3.2:24b` | 15 GB | Main agent model. Best Mistral that fits in 32 GB, tools and vision |
-| `qwen3:14b` | 9 GB | Not Llama or Mistral, but a useful benchmark for tool calling [Likely] |
-| `nomic-embed-text` | 0.3 GB | Embeddings for RAG |
+| Model                  | Size   | Role                                                                   |
+| ---------------------- | ------ | ---------------------------------------------------------------------- |
+| `llama3.2:3b`          | 2 GB   | Fast smoke tests. Expect tool-calling failures                         |
+| `llama3.1:8b`          | 5 GB   | Llama baseline for tool calling                                        |
+| `mistral:7b`           | 4.5 GB | Mistral baseline                                                       |
+| `mistral-nemo:12b`     | 7 GB   | Mid-size Mistral, larger context                                       |
+| `mistral-small3.2:24b` | 15 GB  | Main agent model. Best Mistral that fits in 32 GB, tools and vision    |
+| `qwen3:14b`            | 9 GB   | Not Llama or Mistral, but a useful benchmark for tool calling [Likely] |
+| `nomic-embed-text`     | 0.3 GB | Embeddings for RAG                                                     |
 
 `llama3.3:70b` (about 43 GB) does not fit. Ollama's tools page also lists newer agent-tuned models (for example `qwen3.6`, `granite4.1`) worth trying once the basics work.
 
@@ -115,6 +115,15 @@ Each phase ends with a check. Do not start the next phase until the check passes
 5. Send a chat request with a `tools` array straight to `http://localhost:11434/api/chat`.
 
 Check: the model returns a structured tool call, and `ollama ps` shows it running on GPU.
+
+Result, 2026-10-03: passed. Both chat models chose `get_weather` with `{"city": "Accra", "unit": "celsius"}` from a choice of two tools, at 8,192 context and temperature 0:
+
+| Model                  | Memory loaded | Processor | Generation speed | First call including load |
+| ---------------------- | ------------- | --------- | ---------------- | ------------------------- |
+| `llama3.1:8b`          | 5.3 GB        | 100% GPU  | 42.9 tokens/s    | 5 s                       |
+| `mistral-small3.2:24b` | 14 GB         | 100% GPU  | 14.0 tokens/s    | 19 s                      |
+
+`nomic-embed-text` returns 768-dimension embeddings. Qdrant collections in Phase 4 must use that size.
 
 ### Phase 1: Core stack
 
@@ -178,15 +187,15 @@ Check: a written comparison of which model handles which task, with failure exam
 
 ## 8. Operations
 
-| Task | Command or approach |
-| --- | --- |
-| Start, stop | `docker compose up -d`, `docker compose down` |
-| Logs | `docker compose logs -f n8n` |
-| Back up workflows | `docker compose exec n8n n8n export:workflow --all --output=/data/shared/backup/` |
-| Back up database | `docker compose exec postgres pg_dump -U <user> n8n > backups/n8n.sql` |
-| Upgrade | Change the tag on `n8n` and `task-runners` together, read the release notes, back up first |
-| Destroy all data | `docker compose down -v`. Irreversible, deletes the volumes |
-| Free model RAM | `ollama stop <model>` |
+| Task              | Command or approach                                                                        |
+| ----------------- | ------------------------------------------------------------------------------------------ |
+| Start, stop       | `docker compose up -d`, `docker compose down`                                              |
+| Logs              | `docker compose logs -f n8n`                                                               |
+| Back up workflows | `docker compose exec n8n n8n export:workflow --all --output=/data/shared/backup/`          |
+| Back up database  | `docker compose exec postgres pg_dump -U <user> n8n > backups/n8n.sql`                     |
+| Upgrade           | Change the tag on `n8n` and `task-runners` together, read the release notes, back up first |
+| Destroy all data  | `docker compose down -v`. Irreversible, deletes the volumes                                |
+| Free model RAM    | `ollama stop <model>`                                                                      |
 
 ## 9. Planned file layout
 
@@ -206,26 +215,26 @@ n8n/
 
 ## 10. Decisions
 
-| # | Decision | Outcome |
-| --- | --- | --- |
-| 1 | Ollama native on the host instead of in Docker | Accepted 2026-10-03 |
-| 2 | Reduce Docker Desktop memory to 8 GB | Done and confirmed 2026-10-03 |
-| 3 | Timezone | `Africa/Accra` (GMT+0), matches the system setting |
-| 4 | Qdrant or pgvector for RAG | Open. Recommendation: Qdrant. Needed at Phase 4 |
-| 5 | Use free hosted model tiers for comparison | Open. Optional, later. Data leaves the machine |
-| 6 | Python agents on the host or in a container | Open. Recommendation: host first. Needed at Phase 7 |
+| #   | Decision                                       | Outcome                                             |
+| --- | ---------------------------------------------- | --------------------------------------------------- |
+| 1   | Ollama native on the host instead of in Docker | Accepted 2026-10-03                                 |
+| 2   | Reduce Docker Desktop memory to 8 GB           | Done and confirmed 2026-10-03                       |
+| 3   | Timezone                                       | `Africa/Accra` (GMT+0), matches the system setting  |
+| 4   | Qdrant or pgvector for RAG                     | Open. Recommendation: Qdrant. Needed at Phase 4     |
+| 5   | Use free hosted model tiers for comparison     | Open. Optional, later. Data leaves the machine      |
+| 6   | Python agents on the host or in a container    | Open. Recommendation: host first. Needed at Phase 7 |
 
 ## 11. Phase 7 (later): Python agents on the same infrastructure
 
 The infrastructure is reusable as is. Python agents do not run inside n8n. The Python Code node is a sandbox for short scripts, not a home for agent frameworks [Likely]. They run as a separate project that talks to the same services.
 
-| Service | How a Python agent uses it |
-| --- | --- |
-| Ollama | Native API at `http://localhost:11434`, or the OpenAI-compatible API at `http://localhost:11434/v1` [Likely], which most frameworks (LangGraph, PydanticAI, OpenAI Agents SDK, CrewAI) accept |
-| Postgres | Agent state and memory, in its own database |
-| Qdrant | Same collections the n8n RAG workflows fill |
-| SearXNG | Web search over its JSON API |
-| n8n | Workflows exposed through the MCP Server Trigger become tools for Python agents. In the other direction, a Python agent served over HTTP or MCP becomes a tool for n8n agents |
+| Service  | How a Python agent uses it                                                                                                                                                                    |
+| -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Ollama   | Native API at `http://localhost:11434`, or the OpenAI-compatible API at `http://localhost:11434/v1` [Likely], which most frameworks (LangGraph, PydanticAI, OpenAI Agents SDK, CrewAI) accept |
+| Postgres | Agent state and memory, in its own database                                                                                                                                                   |
+| Qdrant   | Same collections the n8n RAG workflows fill                                                                                                                                                   |
+| SearXNG  | Web search over its JSON API                                                                                                                                                                  |
+| n8n      | Workflows exposed through the MCP Server Trigger become tools for Python agents. In the other direction, a Python agent served over HTTP or MCP becomes a tool for n8n agents                 |
 
 Three changes this requires, all small:
 

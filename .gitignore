@@ -1,2 +1,14 @@
 .claude/
 .vscode/
+# Secrets
+.env
+
+# Local data
+backups/
+shared/
+
+# Agent worktrees
+.claude/worktrees/
+
+# macOS
+.DS_Store
