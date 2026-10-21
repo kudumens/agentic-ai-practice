@@ -1,0 +1,100 @@
+# Agent memory: git push direction for this repository
+
+Remote: git@github.com:kudumens/agentic-ai-practice.git (SSH, account kudumens)
+Default branch: main. Branch protection on main is NOT enabled, so a pull
+request is the only review gate. Never merge or push to main directly.
+
+## Working method
+
+Every phase is built on its own branch, committed, pushed to origin, and
+raised as a pull request for human review. Worktrees are no longer used: the
+work happens in the repository root on a branch created from `main`.
+
+    git checkout main && git pull
+    git checkout -b phase-{n}-{name}
+    git add . && git commit -m "..."
+    git push origin phase-{n}-{name}
+    gh pr create --base main --head phase-{n}-{name} --title "..." --body-file PR_BODY.md
+
+Phase-specific documents use a distinct filename (PHASE1.md) so a phase
+branch cannot overwrite the root README.md.
+
+## The gh CLI is the supported path, not manual browser steps
+
+gh 2.102.0 is installed and authenticated as kudumens with the repo scope, so
+pull requests are created from the terminal with `gh pr create`. Do not
+leave the user to click through the GitHub UI.
+
+    gh pr view <n> --json title,body,files
+    gh pr list --state all
+    gh pr diff <n>
+
+Merging is left to the user: `gh pr merge <n> --squash` only after they
+have reviewed it.
+
+## State as of 2026-10-21
+
+- PR #1 (Phase 0) and PR #2 (plan) merged.
+- PR #3 (Phase 1 stack, n8n 1.54.0 + PostgreSQL 16) merged as cf61103.
+- PR #4 (Phase 1 completion: owner account, Ollama credential, model
+  variants, doc alignment) merged as 82de417.
+- PR #5 (post-merge doc corrections) is open and mergeable, branch
+  docs/post-merge-state.
+
+Phase 1 is complete. All 15 checks in ./test-setup.sh pass, verified from a
+clean volume.
+
+After a PR is merged, delete the phase branch locally and on the remote.
+`main` is then the only branch left, and the remote has only `main` too.
+
+## The n8n stack on this machine
+
+- n8n is pinned to 1.54.0, not the 2.41.6 that PLAN.md originally called
+  for. Before moving to 2.x, re-check DB_TYPE, the DB_POSTGRESDB_* prefix
+  and the SSL behaviour, then re-run ./test-setup.sh from a clean volume.
+- DB_POSTGRESDB_SSL_ENABLED must stay unset on 1.54.0: the option has an
+  untyped (Object) design type, so the string "false" stays truthy.
+- The stack runs from the repository root, so the compose project is "n8n"
+  and the volumes are n8n_postgres-data and n8n_n8n-data. A stack started
+  from a worktree used a different project name and its own volumes.
+- The n8n owner account and the Ollama credential live in the database, not
+  in the repository. n8n stores the owner password only as a bcrypt hash, so
+  it cannot be read back out of the database. A copy of the generated
+  password is kept outside the repository at
+  ~/.n8n-lab/owner-credentials.txt (mode 600). If that file is lost too,
+  reset the password with `docker exec n8n n8n user-management:reset`, which
+  clears the instance back to the first-run owner setup.
+
+## Ollama on this machine
+
+- Ollama 0.35.1 runs natively as a Homebrew service, using a custom plist
+  at config/ollama/sh.brew.ollama.plist:
+      brew services start ollama --file=config/ollama/sh.brew.ollama.plist
+  The formula's own plist does not set the two variables below, and
+  "brew services start ollama" overwrites a custom plist, so always pass
+  --file.
+- OLLAMA_MAX_LOADED_MODELS=1 is required. The 24B variant (15 GB) and the
+  8B variant (6 GB) cannot both be resident on this 32 GB machine; Metal
+  fails with "Insufficient Memory" and the model server is killed.
+- OLLAMA_NO_CLOUD=1 keeps prompts off Ollama's cloud services.
+- The lab model variants are lab-llama3.1-8b and lab-mistral-small3.2-24b,
+  both at a 16,384 token context, built from the Modelfiles in models/.
+- Docker Desktop's memory limit is NOT in effect: settings.json says
+  memoryMiB 8092, but the running VM reports 15.6 GB. It was reset by a
+  Docker Desktop update. Re-applying it is a manual step.
+
+## Driving n8n through its REST API
+
+- The n8n image has no psql client and the editor UI is not scriptable, so
+  use the REST API with a session cookie.
+- Create the owner: POST /rest/owner/setup with email, firstName, lastName
+  and password. The password policy is 8-64 characters, at least one digit
+  and at least one uppercase letter.
+- Log in: POST /rest/login with "email" and "password" (not
+  emailOrLdapLoginId).
+- Create a credential: POST /rest/credentials with name, type and data. Test
+  it with POST /rest/credentials/test and the same payload.
+- Run a workflow: POST /rest/workflows/<id>/run needs the whole workflow in
+  the body as workflowData, not just an id.
+- Execution run data is stored flattened, with nested values as stringified
+  indices. scripts/show_execution.py resolves it.
