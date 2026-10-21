@@ -2,8 +2,8 @@
 
 ## Status
 
-Verified working. n8n 1.54.0 runs against PostgreSQL 16, the editor is
-reachable at http://localhost:5678, and data survives a `docker compose down`
+Complete and verified on 2026-10-21. n8n 1.54.0 runs against PostgreSQL 16, the editor is
+reachable at http://localhost:5678, the Ollama credential test passes, and data survives a `docker compose down`
 / `up` cycle.
 
 ## Completed Tasks
@@ -53,14 +53,33 @@ This worktree implements Phase 1 of the deployment plan, setting up n8n with Doc
    - Checks Postgres is reachable from the n8n container
    - Checks the n8n health endpoint
    - Checks n8n is backed by PostgreSQL, not SQLite
+   - Checks the instance owner account has been created
+   - Checks the Ollama credential exists and that the n8n container can
+     reach the host's model server
+   - Checks the lab model variants are built with a 16,384 token context
 
 7. **`START_N8N.md`** - Usage instructions:
    - How to start the services
    - Access information for n8n web UI
+   - The Ollama credential and the lab model variants
    - Useful Docker commands
 
 8. **`init-scripts/01-init-db.sql`** - Postgres init script mounted at
    `/docker-entrypoint-initdb.d`
+
+9. **`models/`** - Modelfiles for the lab model variants:
+   - `lab-llama3.1-8b.Modelfile` - `llama3.1:8b` with a 16,384 token context
+   - `lab-mistral-small3.2-24b.Modelfile` - `mistral-small3.2:24b` with a
+     16,384 token context
+
+10. **`config/ollama/sh.brew.ollama.plist`** - Launchd plist for the model
+    server. Sets `OLLAMA_MAX_LOADED_MODELS=1` so only one model is resident
+    at a time, and `OLLAMA_NO_CLOUD=1` so no prompt reaches Ollama's cloud
+    services.
+
+11. **`scripts/`** - Helper scripts for driving the n8n REST API:
+    - `make_smoke_workflow.py` - builds the smoke-test workflow
+    - `show_execution.py` - resolves and prints an execution's run data
 
 ## Implementation Details
 
@@ -97,19 +116,25 @@ the owner account created in the UI instead, so those variables were removed.
 
 ## Verification
 
-Verified on n8n 1.54.0 / PostgreSQL 16:
+Verified on n8n 1.54.0 / PostgreSQL 16, on 2026-10-21:
 
-- `./test-setup.sh` passes all 9 checks
+- `./test-setup.sh` passes all 15 checks
 - n8n runs its migrations and creates 24 tables in the `public` schema
 - No `database.sqlite` in the n8n data volume
 - `curl -fsS http://localhost:5678/healthz` returns `{"status":"ok"}`
-- Owner account can be created and used to log in
-- A workflow created through the n8n API is still returned by the API after
+- The instance owner account is set up and can log in
+- The Ollama credential test returns "Connection successful!"
+- The n8n container reaches the host's Ollama at
+  `http://host.docker.internal:11434`
+- Both lab model variants are built and report a 16,384 token context
+- A workflow that runs `lab-llama3.1-8b` through the credential returns
+  `OLLAMA_OK`
+- The workflow, the credential and the owner account all survive
   `docker compose down` followed by `docker compose up`
 
 ## Known deviation from PLAN.md
 
-PLAN.md section 5 lists the n8n image as `docker.n8n.io/n8nio/n8n:2.41.6`.
+PLAN.md section 4 lists the n8n image as `docker.n8n.io/n8nio/n8n:2.41.6`.
 This phase uses `n8nio/n8n:1.54.0`, as specified for the Phase 1 build. The
 two are not interchangeable: the database configuration differs (`DB_TYPE`
 and the `DB_POSTGRESDB_*` prefix behave as described above on 1.54.0), so the
@@ -119,24 +144,29 @@ PLAN.md section 9 names the file `compose.yaml`, which is what is used here.
 
 ## Next Steps
 
-Remaining Phase 1 items from PLAN.md:
+Phase 1 is complete. Remaining items, none of which block Phase 2:
 
-1. Create an Ollama credential with base URL `http://host.docker.internal:11434`
-2. Write the Modelfiles in `models/` and build the lab variants
-3. Commit and push changes to the phase-1-n8n-setup branch
+1. Re-apply the Docker Desktop memory limit of 8 GB. The settings file says
+   `memoryMiB: 8092`, but the running VM reports 15.6 GB, so the models and
+   Docker Desktop are competing for the same 32 GB.
+2. Move the stack to n8n 2.x, which means re-checking the database
+   environment variables and the SSL behaviour first (see PLAN.md).
+3. Start Phase 2: the first agent, with the `lab-llama3.1-8b` variant.
 
 ## Git Operations
 
-This worktree was created using:
+This work was done on the `phase-1-completion` branch, created from `main`
+after PR #3 was merged:
+
 ```bash
-git worktree add .claude/worktrees/phase-1-n8n-setup
+git checkout -b phase-1-completion main
 ```
 
 To commit changes:
 ```bash
 git add .
-git commit -m "Implement Phase 1: n8n setup"
-git push origin phase-1-n8n-setup
+git commit -m "Complete Phase 1: Ollama credential, model variants, docs"
+git push origin phase-1-completion
 ```
 
 Then create a pull request from GitHub UI.

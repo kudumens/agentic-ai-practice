@@ -1,0 +1,17 @@
+# Lab variant of llama3.1:8b with a fixed 16,384 token context window.
+#
+# Every client in the lab (n8n nodes, Python agents, the OpenAI-compatible
+# endpoint) then gets the same context, because the OpenAI-compatible
+# endpoint has no per-request context option. See PLAN.md section 5.
+#
+# A variant reuses the base model's weights, so it adds no disk space.
+#
+# Build with:
+#   ollama create lab-llama3.1-8b -f models/lab-llama3.1-8b.Modelfile
+#
+# No SYSTEM prompt on purpose: agent instructions belong in the n8n workflow
+# or the Python code, where each agent's prompt is visible and versioned.
+
+FROM llama3.1:8b
+
+PARAMETER num_ctx 16384

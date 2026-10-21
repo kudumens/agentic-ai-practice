@@ -1,45 +1,65 @@
 # Git Operations for n8n AI Agent Lab
 
-This file documents the git procedures used for managing worktrees and branches for different phases of the n8n AI agent lab project.
+This file documents the git procedures used for managing branches for the different phases of the n8n AI agent lab project.
 
-## Worktree Management
+## Branch Management
 
-### Creating a New Worktree for a Phase
+### Creating a branch for a phase
 ```bash
-# Create a new worktree for a specific phase
-git worktree add .claude/worktrees/phase-1-n8n-setup
-
-# Switch to the worktree directory
-cd .claude/worktrees/phase-1-n8n-setup
+# Branch from the current main
+git checkout main
+git pull
+git checkout -b phase-1-completion
 ```
 
-### Working in a Worktree
+### Working on a branch
 ```bash
-# Make changes in the worktree
-# Commit changes
+# Make changes
 git add .
-git commit -m "Implement Phase 1: n8n setup"
+git commit -m "Complete Phase 1: Ollama credential, model variants, docs"
 
-# Push to remote (if needed)
-git push origin phase-1-n8n-setup
+# Push changes (first push of a new branch)
+git push origin phase-1-completion
 ```
 
 ## Git Workflow for This Project
 
-1. **Create worktree**: `git worktree add .claude/worktrees/phase-1-n8n-setup`
-2. **Switch to worktree**: `cd .claude/worktrees/phase-1-n8n-setup`
-3. **Make changes** in the worktree directory
-4. **Commit changes**: `git add . && git commit -m "..."`
-5. **Push changes**: `git push origin phase-1-n8n-setup`
-6. **Create Pull Request**: `gh pr create` (see below) or the GitHub UI
+1. **Branch from `main`**: `git checkout -b phase-{n}-{description} main`
+2. **Make changes** on the branch
+3. **Commit changes**: `git add . && git commit -m "..."`
+4. **Push changes**: `git push origin <branch>`
+5. **Create Pull Request**: `gh pr create` (see below) or the GitHub UI
+6. **Merge** after review: `gh pr merge <number> --squash`
 
 ### Branch Naming Convention
 
-- Use descriptive names like: `phase-1-n8n-setup`, `phase-2-postgres-db`, etc.
+- Use descriptive names like: `phase-1-completion`, `phase-2-first-agent`
 - Follow the pattern: `phase-{number}-{description}`
-- The remote already has `phase-1-n8n-setup` and `main`. Push with
-  `git push origin <branch>` on the first push of a new branch, so the
-  upstream is tracked and later pushes work without `-u`.
+- The remote already has `phase-1-n8n-setup`, `phase-1-completion` and
+  `main`. Push with `git push origin <branch>` on the first push of a new
+  branch, so the upstream is tracked and later pushes work without `-u`.
+
+### Worktrees
+
+Earlier phases used a worktree under `.claude/worktrees/`, so that a phase
+branch could not overwrite the project documentation. This is no longer
+needed: the work is done on a plain branch in the repository root, and
+phase-specific documents use a distinct filename (`PHASE1.md`) so they
+cannot overwrite `README.md`.
+
+If a worktree is used again:
+
+```bash
+git worktree add .claude/worktrees/phase-2-first-agent
+cd .claude/worktrees/phase-2-first-agent
+# ... work, commit, push, merge ...
+git worktree remove .claude/worktrees/phase-2-first-agent
+```
+
+Remember that the compose project name follows the directory name, so a
+stack started from a worktree has its own volumes and containers. Migrating
+to the root means `docker compose down` in the old directory and
+`docker compose up -d` in the new one.
 
 ### Creating the Pull Request
 
@@ -98,12 +118,15 @@ The pull requests already in this repository (PR #1 and PR #2) use this
 structure: Summary, What changed, Why, How it was tested, Follow-ups.
 
 ## Important Notes
-- All worktrees are created under `.claude/worktrees/` directory
-- Worktrees contain only the files specific to that phase implementation
-- Main branch remains unchanged until PRs are merged
+- Work is done on a branch in the repository root. Branches are created from
+  `main`, and `main` is only changed by merging a reviewed pull request
 - The root `README.md` is the project overview. Phase-specific documents use
   a different filename (`PHASE1.md`) so that a phase branch cannot overwrite
   the project documentation
 - The compose file is `compose.yaml`, matching PLAN.md section 9
 - Commands use Docker Compose v2 (`docker compose`), not the deprecated
   `docker-compose` binary
+- Real secrets stay in `.env`, which is gitignored. `.env.example` holds the
+  variable names only
+- The n8n owner account password is not in the repository. It is reset through
+  the editor's UI if it is lost
