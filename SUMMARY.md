@@ -156,7 +156,7 @@ Phase 1 is complete. Remaining items, none of which block Phase 2:
 ## Git Operations
 
 This work was done on the `phase-1-completion` branch, created from `main`
-after PR #3 was merged:
+after PR #3 was merged, and merged back into `main` through PR #4:
 
 ```bash
 git checkout -b phase-1-completion main
@@ -169,4 +169,6 @@ git commit -m "Complete Phase 1: Ollama credential, model variants, docs"
 git push origin phase-1-completion
 ```
 
-Then create a pull request from GitHub UI.
+Then create a pull request from GitHub UI. PR #4 has been merged, so the
+`phase-1-completion` branch was deleted from both the local repository and
+the remote. `main` is the only branch that remains.
