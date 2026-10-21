@@ -35,9 +35,10 @@ git push origin phase-1-completion
 
 - Use descriptive names like: `phase-1-completion`, `phase-2-first-agent`
 - Follow the pattern: `phase-{number}-{description}`
-- The remote already has `phase-1-n8n-setup`, `phase-1-completion` and
-  `main`. Push with `git push origin <branch>` on the first push of a new
-  branch, so the upstream is tracked and later pushes work without `-u`.
+- The remote currently has only `main`. Phase branches are deleted from the
+  remote once their pull request is merged. Push with `git push origin <branch>`
+  on the first push of a new branch, so the upstream is tracked and later
+  pushes work without `-u`.
 
 ### Worktrees
 
@@ -56,6 +57,10 @@ cd .claude/worktrees/phase-2-first-agent
 git worktree remove .claude/worktrees/phase-2-first-agent
 ```
 
+The `.claude/worktrees/` directory is gitignored, and its leftovers from
+earlier phases have been removed. `git worktree list` should show only the
+main working tree when no worktree is in use.
+
 Remember that the compose project name follows the directory name, so a
 stack started from a worktree has its own volumes and containers. Migrating
 to the root means `docker compose down` in the old directory and
@@ -67,11 +72,11 @@ The GitHub CLI is installed and authenticated as `kudumens`, so the pull
 request can be created from the terminal instead of the browser:
 
 ```bash
-# From inside the worktree
+# From the repository root
 gh pr create \
   --base main \
-  --head phase-1-n8n-setup \
-  --title "Add Phase 1 n8n and PostgreSQL stack" \
+  --head phase-1-completion \
+  --title "Complete Phase 1: Ollama credential, model variants, docs" \
   --body-file PR_BODY.md
 ```
 
@@ -114,7 +119,7 @@ The commands that were run and their results.
 Anything deliberately left out, and the known gaps.
 ```
 
-The pull requests already in this repository (PR #1 and PR #2) use this
+The pull requests already in this repository (PR #1 through PR #4) use this
 structure: Summary, What changed, Why, How it was tested, Follow-ups.
 
 ## Important Notes
