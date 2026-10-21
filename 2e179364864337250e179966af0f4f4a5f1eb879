@@ -1,0 +1,54 @@
+# Agent memory: git push direction for this repository
+
+Remote: git@github.com:kudumens/agentic-ai-practice.git (SSH, account kudumens)
+Default branch: main. Branch protection on main is NOT enabled, so a pull
+request is the only review gate. Never merge or push to main directly.
+
+## Working method
+
+Every phase is built in a dedicated git worktree, committed on its own
+branch, pushed to origin, and raised as a pull request for human review.
+
+    git worktree add .claude/worktrees/phase-{n}-{name}
+    cd .claude/worktrees/phase-{n}-{name}
+    git add . && git commit -m "..."
+    git push origin phase-{n}-{name}
+    gh pr create --base main --head phase-{n}-{name} --title "..." --body-file PR_BODY.md
+
+## The gh CLI is the supported path, not manual browser steps
+
+gh 2.102.0 is installed and authenticated as kudumens with the repo scope, so
+pull requests are created from the terminal with `gh pr create`. Do not
+leave the user to click through the GitHub UI.
+
+    gh pr view <n> --json title,body,files
+    gh pr list --state all
+    gh pr diff <n>
+
+Merging is left to the user: `gh pr merge <n> --squash` only after they
+have reviewed it.
+
+## Naming rules that prevent accidents
+
+- The compose file is `compose.yaml` (PLAN.md section 9), not
+  `docker-compose.yml`.
+- Phase documents are named `PHASE{N}.md`. The root `README.md` is the
+  project overview and hardware documentation; a phase branch must never
+  overwrite it.
+- Use Docker Compose v2 (`docker compose`). The `docker-compose` binary is
+  the deprecated v1 form.
+- Secrets live in `.env`, which is gitignored. `.env.example` is committed
+  with empty values.
+- The branch name is reused across phases only after its pull request is
+  merged and the worktree removed.
+
+## Notes and memory
+
+This file is a git note on the notes ref `agentic-ai-practice`. Read it
+first when starting a new phase:
+
+    git notes --ref=agentic-ai-practice show HEAD
+
+Add to it as the workflow evolves:
+
+    git notes --ref=agentic-ai-practice add -f -F - HEAD
