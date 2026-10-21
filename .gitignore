@@ -10,5 +10,8 @@ shared/
 # Agent worktrees
 .claude/worktrees/
 
+# Local n8n runtime data (bind-mount fallback, not used by default)
+n8n-data/
+
 # macOS
 .DS_Store
