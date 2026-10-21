@@ -1,0 +1,16 @@
+# Lab variant of mistral-small3.2:24b with a fixed 16,384 token context
+# window. This is the main agent model for the lab: the best Mistral that
+# fits in 32 GB of unified memory, with tool calling and vision.
+#
+# Context costs memory. If this variant does not show 100% GPU in
+# `ollama ps`, drop it to 12,288. See PLAN.md section 5.
+#
+# Build with:
+#   ollama create lab-mistral-small3.2-24b -f models/lab-mistral-small3.2-24b.Modelfile
+#
+# No SYSTEM prompt on purpose: agent instructions belong in the n8n workflow
+# or the Python code, where each agent's prompt is visible and versioned.
+
+FROM mistral-small3.2:24b
+
+PARAMETER num_ctx 16384

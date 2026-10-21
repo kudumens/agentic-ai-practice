@@ -1,7 +1,7 @@
 # Local n8n AI Agent Lab: Deployment Plan
 
-Date: 2026-10-03
-Status: Phase 0 complete. Phase 1 not started.
+Date: 2026-10-03. Updated: 2026-10-21.
+Status: Phase 0 complete. Phase 1 complete. Phase 2 not started.
 
 Confidence tags used throughout: **[Certain]** checked today against this machine or official sources, **[Likely]** strong inference or prior knowledge not re-checked today, **[Guessing]** filling a gap.
 
@@ -57,12 +57,35 @@ Memory budget [Likely]: macOS and apps about 6 GB, Docker VM 8 GB, leaving about
 
 | Service      | Image (pinned)                     | Phase | Purpose                                                                                                               |
 | ------------ | ---------------------------------- | ----- | --------------------------------------------------------------------------------------------------------------------- |
-| n8n          | `docker.n8n.io/n8nio/n8n:2.41.6`   | 1     | Workflow engine and agent builder. 2.41.6 is the stable release as of 2026-10-02 [Certain]                            |
+| n8n          | `n8nio/n8n:1.54.0`                | 1     | Workflow engine and agent builder. Phase 1 runs 1.54.0, not the 2.41.6 listed in the original plan: see the note under this table [Certain]                            |
 | postgres     | `postgres:16-alpine`               | 1     | n8n database, agent chat memory, and a practice database for SQL tools. Same image the n8n starter kit uses [Certain] |
-| task-runners | `n8nio/runners:2.41.6`             | 3     | Runs Code node JavaScript and native Python in a sidecar. Version must match n8n exactly [Certain]                    |
+| task-runners | `n8nio/runners:1.54.0`             | 3     | Runs Code node JavaScript and native Python in a sidecar. Version must match n8n exactly [Certain]                    |
 | qdrant       | `qdrant/qdrant` (pin at install)   | 4     | Vector store for RAG, with a dashboard at `:6333/dashboard`                                                           |
 | searxng      | `searxng/searxng` (pin at install) | 3     | Self-hosted metasearch, no API key. JSON output must be enabled in its settings [Likely]                              |
 | Ollama       | native, not Docker                 | 0     | Model server with Metal acceleration                                                                                  |
+
+### n8n version note
+
+The plan originally called for `docker.n8n.io/n8nio/n8n:2.41.6`. Phase 1 was
+built and verified on `n8nio/n8n:1.54.0` instead, and that is what the
+compose file pins [Certain].
+
+The two are not interchangeable. The database configuration differs between
+them, and 1.54.0 has three settings that each fail at startup if they are
+wrong (see [PHASE1.md](PHASE1.md)):
+
+- `DB_TYPE` must be `postgresdb`, not `postgres`. `postgres` fails with
+  `Cannot read properties of undefined (reading 'database')`.
+- Only the `DB_POSTGRESDB_*` variables are read. The older `DB_POSTGRES_*`
+  names are ignored.
+- `DB_POSTGRESDB_SSL_ENABLED` must be left unset. On 1.54.0 it is declared
+  with an untyped (Object) design type, so the value is not coerced to a
+  boolean: the string `false` stays truthy and n8n tries to open an SSL
+  connection to a Postgres that has no SSL.
+
+Before moving to n8n 2.x, re-check the database environment variables and
+the SSL behaviour against the 2.x documentation, then re-run
+`./test-setup.sh` from a clean volume.
 
 ### Why not use the n8n self-hosted AI starter kit as is
 
@@ -117,6 +140,18 @@ Rules:
 - Context costs memory. The 24B variant at 16,384 must still show `100% GPU` in `ollama ps`. If it does not, drop that variant to 12,288 [Guessing on where the limit falls].
 - No `SYSTEM` prompt in a Modelfile. Agent instructions belong in the n8n workflow or the Python code, where each agent's prompt is visible and versioned. A prompt baked into the model is applied silently to every agent that uses it.
 - Name every variant `lab-*` so variants are easy to tell apart from base models in `ollama list`.
+- **Only one model at a time.** The 24B variant needs 15 GB and the 8B needs 6 GB, and they cannot both stay resident on a 32 GB machine that is also running Docker Desktop. `OLLAMA_MAX_LOADED_MODELS=1` makes the server evict the older model instead of dying with a Metal `Insufficient Memory` error. See section 6.
+
+#### Result, 2026-10-21: both variants built and verified
+
+| Variant                    | Base                   | Context | Status                        |
+| -------------------------- | ---------------------- | ------- | ----------------------------- |
+| `lab-llama3.1-8b`          | `llama3.1:8b`          | 16,384  | Built, 100% GPU, verified     |
+| `lab-mistral-small3.2-24b` | `mistral-small3.2:24b` | 16,384  | Built, 100% GPU, verified     |
+
+Both variants reuse the base model's weights, so neither added disk space [Certain]. Both report a 16,384 token context in `ollama ps`, after a request to the native API and after a request to the OpenAI-compatible endpoint.
+
+The models on this machine are `llama3.1:8b`, `mistral-small3.2:24b`, `nomic-embed-text`, `devstral:24b`, `qwen3-coder:30b` and `gemma4:26b` [Certain, from `ollama list` on 2026-10-21]. The table above is the original plan's list; the models actually pulled in Phase 0 are the first two plus the embedding model. The others are already on the machine and are worth keeping as a Phase 2 comparison set.
 
 ## 6. Security rules for the lab
 
@@ -127,6 +162,47 @@ Rules:
 - An agent that reads web pages and can also run code or write files can be steered by text in those pages (prompt injection). Keep web search and write-capable tools on separate agents until you understand the risk.
 - Pin image versions. Upgrade deliberately.
 - Never send training data to a rented cloud GPU. Fine-tuning, if done at all, runs on this machine (Phase 8).
+- Set `OLLAMA_NO_CLOUD=1` on the model server, so no prompt can reach Ollama's cloud services. Supported in Ollama 0.35.1 [Certain, confirmed in `ollama serve --help` on 2026-10-21].
+- Set `OLLAMA_MAX_LOADED_MODELS=1` on the model server, so only one model is resident at a time. See the memory note below.
+
+### Model server configuration
+
+Ollama runs as a Homebrew service, so its environment comes from a launchd
+plist. The lab uses a custom plist instead of the formula's, because the
+formula's plist does not set the two variables above:
+
+```bash
+brew services start ollama --file=config/ollama/sh.brew.ollama.plist
+```
+
+The plist in `config/ollama/` sets `OLLAMA_FLASH_ATTENTION=1`,
+`OLLAMA_KV_CACHE_TYPE=q8_0`, `OLLAMA_MAX_LOADED_MODELS=1` and
+`OLLAMA_NO_CLOUD=1`.
+
+### Memory on this machine
+
+Unified memory is shared between macOS, Docker Desktop and the models, so
+the three compete for the same 32 GB [Certain].
+
+| Consumer | Memory |
+| --- | --- |
+| macOS and applications | about 6 GB |
+| Docker Desktop VM | 15.6 GB (measured, `docker info`) |
+| `lab-llama3.1-8b` | about 6 GB |
+| `lab-mistral-small3.2-24b` | about 15 GB |
+
+The 24B and the 8B cannot both stay resident: Metal fails with
+`Insufficient Memory (kIOGPUCommandBufferCallbackErrorOutOfMemory)` and the
+model server is killed. `OLLAMA_MAX_LOADED_MODELS=1` turns that crash into a
+normal eviction [Certain, reproduced and fixed on 2026-10-21].
+
+Note that the plan recorded Docker Desktop as reduced to 8 GB, and its
+settings file still says `memoryMiB: 8092`, but the running VM reports
+15.6 GB. The reduction was not applied to the current Docker Desktop
+version, or was reset. Lowering it to 8 GB would give the models about
+7.6 GB more room, which is the difference between running one 24B model
+comfortably and not. This is a manual step in Docker Desktop's settings
+that is still outstanding.
 
 ## 7. Phases
 
@@ -163,6 +239,47 @@ Result, 2026-10-03: passed. Both chat models chose `get_weather` with `{"city": 
 Check: the credential test passes, and a workflow survives `docker compose down` followed by `up`. Each lab variant shows its context of 16,384 in `ollama ps` after a request to the native API, and again after a request to `http://localhost:11434/v1/chat/completions`.
 
 If the credential test is refused: Ollama may be listening on loopback only. Docker Desktop for Mac normally still reaches it [Likely]. The fallback is setting `OLLAMA_HOST=0.0.0.0:11434` for Ollama, which also exposes it to the local network, so prefer not to.
+
+#### Result, 2026-10-21: passed
+
+All six steps are done and verified. The details are in [PHASE1.md](PHASE1.md);
+the short version:
+
+| Step | Result |
+| --- | --- |
+| `compose.yaml`, `.env`, `.env.example` | Done. `n8nio/n8n:1.54.0` and `postgres:16-alpine` |
+| n8n settings | Done. `DB_TYPE=postgresdb` and the `DB_POSTGRESDB_*` prefix, `DB_POSTGRESDB_SSL_ENABLED` left unset |
+| Postgres healthcheck, named volumes | Done. n8n waits on `service_healthy` |
+| `docker compose up -d`, open the editor, create the owner | Done. Owner account `owner@lab.local` created through the API |
+| Ollama credential at `http://host.docker.internal:11434` | Done. Credential test returns "Connection successful!" |
+| Modelfiles in `models/`, build the lab variants | Done. `lab-llama3.1-8b` and `lab-mistral-small3.2-24b` |
+
+Verification:
+
+- `./test-setup.sh` passes all 15 checks.
+- The credential test returns `Connection successful!`.
+- A workflow that runs the `lab-llama3.1-8b` variant through the credential
+  returns `OLLAMA_OK`, so the whole path works: n8n, credential, host Ollama,
+  model, and back.
+- That workflow, the credential and the owner account all survive
+  `docker compose down` followed by `up`.
+- Both lab variants report a 16,384 token context in `ollama ps`, after a
+  request to the native API and after a request to the OpenAI-compatible
+  endpoint. This confirms the assumption in section 5 that the
+  OpenAI-compatible endpoint honours a Modelfile's `num_ctx`.
+
+Two things the plan did not anticipate were found and fixed during this
+phase:
+
+1. **The two lab variants cannot be loaded at the same time.** The 24B
+   variant needs 15 GB and the 8B needs 6 GB, and the host has 32 GB shared
+   with Docker Desktop, which is taking 15.6 GB of it. With both resident,
+   Metal fails with `Insufficient Memory` and the model server dies. The fix
+   is `OLLAMA_MAX_LOADED_MODELS=1`, which makes the scheduler evict the old
+   model instead of crashing. See section 6.
+2. **`OLLAMA_NO_CLOUD` is supported in Ollama 0.35.1.** Section 6 asks for a
+   way to keep prompts off Ollama's cloud services; this environment
+   variable is the answer, and it is now set for the model server.
 
 ### Phase 2: First agent
 
@@ -220,11 +337,15 @@ Check: a written comparison of which model handles which task, with failure exam
 | ----------------- | ------------------------------------------------------------------------------------------ |
 | Start, stop       | `docker compose up -d`, `docker compose down`                                              |
 | Logs              | `docker compose logs -f n8n`                                                               |
+| Verify the stack  | `./test-setup.sh`                                                                          |
 | Back up workflows | `docker compose exec n8n n8n export:workflow --all --output=/data/shared/backup/`          |
 | Back up database  | `docker compose exec postgres pg_dump -U <user> n8n > backups/n8n.sql`                     |
 | Upgrade           | Change the tag on `n8n` and `task-runners` together, read the release notes, back up first |
 | Destroy all data  | `docker compose down -v`. Irreversible, deletes the volumes                                |
 | Free model RAM    | `ollama stop <model>`                                                                      |
+| Model server      | `brew services start ollama --file=config/ollama/sh.brew.ollama.plist`                    |
+| Model server logs | `tail -f /opt/homebrew/var/log/ollama.log`                                                 |
+| Rebuild variants  | `ollama create lab-llama3.1-8b -f models/lab-llama3.1-8b.Modelfile`                       |
 
 ## 9. Planned file layout
 
@@ -232,11 +353,16 @@ Check: a written comparison of which model handles which task, with failure exam
 n8n/
 ├── README.md            project overview and hardware requirements
 ├── PLAN.md              this file
+├── PHASE1.md            what Phase 1 built, and how to verify it
 ├── compose.yaml         all Docker services
 ├── .env                 real secrets, gitignored
 ├── .env.example         variable names only, committed
 ├── .gitignore
+├── test-setup.sh        verification script for the running stack
 ├── models/              Modelfiles for the lab variants
+├── config/ollama/       launchd plist for the model server
+├── scripts/             helper scripts for the REST API
+├── init-scripts/        Postgres init scripts, run on a fresh volume
 ├── searxng/settings.yml enables JSON output
 ├── shared/              mounted into n8n at /data/shared
 ├── backups/             gitignored
@@ -249,11 +375,15 @@ n8n/
 | #   | Decision                                       | Outcome                                             |
 | --- | ---------------------------------------------- | --------------------------------------------------- |
 | 1   | Ollama native on the host instead of in Docker | Accepted 2026-10-03                                 |
-| 2   | Reduce Docker Desktop memory to 8 GB           | Done and confirmed 2026-10-03                       |
+| 2   | Reduce Docker Desktop memory to 8 GB           | Done and confirmed 2026-10-03. **Not in effect now**: the running VM reports 15.6 GB. Re-apply in Docker Desktop's settings |
 | 3   | Timezone                                       | `Africa/Accra` (GMT+0), matches the system setting  |
 | 4   | Qdrant or pgvector for RAG                     | Open. Recommendation: Qdrant. Needed at Phase 4     |
 | 5   | Use free hosted model tiers for comparison     | Open. Optional, later. Data leaves the machine      |
 | 6   | Python agents on the host or in a container    | Open. Recommendation: host first. Needed at Phase 7 |
+| 7   | n8n version for Phase 1                        | `n8nio/n8n:1.54.0`, not 2.41.6. Re-check the database variables before moving to 2.x |
+| 8   | One model loaded at a time in Ollama           | `OLLAMA_MAX_LOADED_MODELS=1`. Set 2026-10-21         |
+| 9   | Keep prompts off Ollama's cloud services       | `OLLAMA_NO_CLOUD=1`. Set 2026-10-21                  |
+| 10  | Model server plist                             | Custom plist in `config/ollama/`, not the formula's |
 
 ## 11. Phase 7 (later): Python agents on the same infrastructure
 
@@ -294,13 +424,16 @@ Check: on the held-back prompts, the tuned 8B model makes fewer tool-call errors
 
 ## 13. Known gaps in this plan
 
-- No compose file has been written or run. Every setting above is from documentation, not from a working stack on this machine.
+- The compose stack is now written, running and verified on this machine. That gap is closed as of 2026-10-21.
 - Model sizes in section 5 are approximate. The Ollama default context length is now measured (section 2).
-- Lab variants: that the OpenAI-compatible endpoint honors a Modelfile's `num_ctx` is unverified until the Phase 1 check runs.
+- The OpenAI-compatible endpoint honouring a Modelfile's `num_ctx` is now confirmed: both lab variants show a 16,384 context after a request to `/v1/chat/completions` [Certain, 2026-10-21].
+- The n8n version is 1.54.0, not the 2.41.6 the plan assumed. The database variables and SSL behaviour must be re-checked before moving to 2.x.
+- Docker Desktop's memory reduction to 8 GB is not in effect (the running VM reports 15.6 GB). This is a manual step still outstanding, and it is the main constraint on which models fit.
+- The owner account password was generated during setup and is not in the repository. It has to be reset through the UI if it is lost.
 - Phase 8: how much fine-tuning helps tool calling, the exact `ollama create` quantize option, and the memory needed beyond 8B models are unverified.
 - SearXNG, Qdrant and MCP node details were not re-checked against current docs. Verify at the start of their phases.
 - Docker Model Runner's GPU use on Apple Silicon is unconfirmed.
-- Phase 7 is from prior knowledge. Ollama's OpenAI-compatible endpoint and its context-length behavior were not re-checked today.
+- Phase 7 is from prior knowledge. Ollama's OpenAI-compatible endpoint was re-checked on 2026-10-21 (its context behaviour is confirmed), but the rest of Phase 7 is not.
 
 ## 14. Sources checked on 2026-10-03
 

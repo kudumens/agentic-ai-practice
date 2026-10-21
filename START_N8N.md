@@ -7,7 +7,7 @@
 
 1. **Navigate to the project directory**:
    ```bash
-   cd /Users/richardadjei-mensah/Documents/LOCAL/CODE-PLAYGROUND/n8n/.claude/worktrees/phase-1-n8n-setup
+   cd /Users/richardadjei-mensah/Documents/LOCAL/CODE-PLAYGROUND/n8n
    ```
 
 2. **Create `.env`** (only needed the first time):
@@ -30,6 +30,11 @@
    start. It is ready when `http://localhost:5678/healthz` returns
    `{"status":"ok"}`.
 
+5. **Start the model server**, if it is not already running:
+   ```bash
+   brew services start ollama --file=config/ollama/sh.brew.ollama.plist
+   ```
+
 ## Accessing n8n
 
 Once the services are running, access n8n at:
@@ -40,6 +45,33 @@ On first load n8n asks you to create the owner account. The email and password
 you enter there become the n8n login. The account is stored in PostgreSQL, so it
 survives a `docker compose down` / `up` cycle.
 
+## The Ollama credential
+
+The lab needs one credential so n8n can reach the model server on the host.
+Create it in the editor under **Credentials**, or through the API:
+
+```bash
+curl -X POST http://localhost:5678/rest/credentials \
+  -H 'Content-Type: application/json' -b cookies.txt \
+  -d '{"name":"Ollama (host)","type":"ollamaApi","data":{"baseUrl":"http://host.docker.internal:11434"}}'
+```
+
+`host.docker.internal` is how the n8n container reaches a service running
+natively on the host. The credential test on the editor's credentials page
+returns "Connection successful!" when it is right.
+
+## The lab model variants
+
+The `lab-*` variants fix the context window at 16,384 tokens. Build them once:
+
+```bash
+ollama create lab-llama3.1-8b -f models/lab-llama3.1-8b.Modelfile
+ollama create lab-mistral-small3.2-24b -f models/lab-mistral-small3.2-24b.Modelfile
+```
+
+Only one model is kept in memory at a time, so switching between the 8B and
+the 24B takes a few seconds while the model loads.
+
 ## Verifying the Setup
 
 ```bash
@@ -47,8 +79,10 @@ survives a `docker compose down` / `up` cycle.
 ```
 
 This checks container state, Postgres health and reachability from the n8n
-container, the n8n health endpoint, and that n8n is using PostgreSQL rather
-than SQLite.
+container, the n8n health endpoint, that n8n is using PostgreSQL rather than
+SQLite, that the owner account exists, that the Ollama credential is stored
+and reachable, and that the lab model variants are built with the right
+context window.
 
 ## Stopping the Services
 

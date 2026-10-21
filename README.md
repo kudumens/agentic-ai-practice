@@ -4,7 +4,7 @@ A private lab for building AI agents that run entirely on one Mac. n8n orchestra
 
 The aim is to learn how to build agents that complete long, multi-step tasks on confidential material without sending anything to a cloud provider.
 
-Status: Phase 0 (host preparation) complete. Ollama and three models are installed and tested. The build plan is in [PLAN.md](PLAN.md).
+Status: Phase 0 (host preparation) and Phase 1 (n8n and PostgreSQL stack) complete. Ollama and six models are installed and tested, n8n runs against PostgreSQL, and the lab model variants are built. The build plan is in [PLAN.md](PLAN.md), and the Phase 1 details are in [PHASE1.md](PHASE1.md).
 
 Confidence tags: **[Certain]** checked on 2026-10-03 against this machine or a primary source, **[Likely]** strong inference or third-party figure, **[Guessing]** an estimate that the lab itself still has to measure.
 
