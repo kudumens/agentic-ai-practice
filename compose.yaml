@@ -1,15 +1,13 @@
 services:
   n8n:
-    image: n8nio/n8n:1.54.0
+    image: n8nio/n8n:latest
     container_name: n8n
     restart: unless-stopped
     networks:
       - lab-network
     ports:
-      # Loopback only: nothing on this port is reachable from the network.
       - "127.0.0.1:5678:5678"
     environment:
-      # --- Server ---
       - N8N_HOST=0.0.0.0
       - N8N_PORT=5678
       - N8N_LISTEN_ADDRESS=0.0.0.0
@@ -22,19 +20,13 @@ services:
       - N8N_DEFAULT_BINARY_DATA_MODE=filesystem
       - GENERIC_TIMEZONE=${GENERIC_TIMEZONE}
       - TZ=${GENERIC_TIMEZONE}
-
-      # --- Security ---
       - N8N_USER_MANAGEMENT_JWT_SECRET=${N8N_USER_MANAGEMENT_JWT_SECRET}
       - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
-
-      # --- URLs ---
       - N8N_EDITOR_BASE_URL=${N8N_EDITOR_BASE_URL}
       - WEBHOOK_URL=${WEBHOOK_URL}
       - N8N_ENDPOINT_WEBHOOK=webhook
       - N8N_ENDPOINT_WEBHOOK_TEST=webhook-test
       - N8N_ENDPOINT_WEBHOOK_WAIT=webhook-waiting
-
-      # --- Database (n8n >= 1.53 uses the DB_POSTGRESDB_* prefix) ---
       - DB_TYPE=postgresdb
       - DB_POSTGRESDB_HOST=postgres
       - DB_POSTGRESDB_PORT=5432
@@ -42,11 +34,6 @@ services:
       - DB_POSTGRESDB_SCHEMA=public
       - DB_POSTGRESDB_USER=${POSTGRES_USER}
       - DB_POSTGRESDB_PASSWORD=${POSTGRES_PASSWORD}
-      # NOTE: DB_POSTGRESDB_SSL_ENABLED is deliberately NOT set.
-      # In n8n 1.54.0 that option is declared with an untyped (Object) design
-      # type, so the value is not coerced to a boolean. The string "false"
-      # would stay truthy and enable SSL against a non-SSL Postgres.
-      # Leaving it unset keeps the boolean default (false).
     volumes:
       - n8n-data:/home/node/.n8n
     depends_on:
@@ -60,7 +47,6 @@ services:
     networks:
       - lab-network
     ports:
-      # Loopback only: nothing on this port is reachable from the network.
       - "127.0.0.1:5432:5432"
     environment:
       - POSTGRES_USER=${POSTGRES_USER}
@@ -76,9 +62,52 @@ services:
       retries: 12
       start_period: 10s
 
+  redis:
+    image: redis:alpine
+    container_name: redis
+    restart: unless-stopped
+    networks:
+      - lab-network
+
+  searxng:
+    image: searxng/searxng:latest
+    container_name: searxng
+    restart: unless-stopped
+    networks:
+      - lab-network
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      - SEARXNG_SETTINGS_DIR=/etc/searxng
+    volumes:
+      - searxng-data:/etc/searxng
+    depends_on:
+      - redis
+
+  piston:
+    image: ghcr.io/engineer-man/piston:latest
+    container_name: piston
+    restart: unless-stopped
+    privileged: true
+    entrypoint: ["/bin/bash", "/piston-entrypoint.sh"]
+    volumes:
+      - ./piston-entrypoint.sh:/piston-entrypoint.sh:ro
+    networks:
+      - lab-network
+    ports:
+      - "127.0.0.1:2000:2000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://127.0.0.1:2000/', r => process.exit(r.statusCode < 500 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
 volumes:
   postgres-data:
   n8n-data:
+  searxng-data:
+  piston_isolate:
 
 networks:
   lab-network:
