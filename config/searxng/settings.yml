@@ -1,0 +1,13 @@
+# SearXNG settings for the lab. Mounted read-only into the searxng container.
+# The stock image serves HTML only; n8n Assistant web search needs the JSON API.
+# The secret key comes from SEARXNG_SECRET in .env, not from this file.
+# Defaults: https://docs.searxng.org/admin/settings/
+use_default_settings: true
+
+server:
+  image_proxy: true
+
+search:
+  formats:
+    - html
+    - json
