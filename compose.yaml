@@ -34,10 +34,16 @@ services:
       - DB_POSTGRESDB_SCHEMA=public
       - DB_POSTGRESDB_USER=${POSTGRES_USER}
       - DB_POSTGRESDB_PASSWORD=${POSTGRES_PASSWORD}
+      - N8N_INSTANCE_AI_SANDBOX_ENABLED=true
+      - N8N_INSTANCE_AI_SANDBOX_PROVIDER=n8n-sandbox
+      - N8N_SANDBOX_SERVICE_URL=http://sandbox-api:8080
+      - N8N_SANDBOX_SERVICE_API_KEY=${SANDBOX_API_KEY}
     volumes:
       - n8n-data:/home/node/.n8n
     depends_on:
       postgres:
+        condition: service_healthy
+      sandbox-api:
         condition: service_healthy
 
   postgres:
@@ -103,11 +109,91 @@ services:
       retries: 5
       start_period: 5s
 
+  # n8n Assistant sandbox service, from n8n's docker/get-n8n-compose.yml.
+  # The API, runner and sandbox images ship as one release, so keep all three
+  # tags in step. Keep the service names: the mTLS certificates are issued for
+  # sandbox-api and sandbox-runner-<n>. No ports are published to the host.
+  sandbox-certs:
+    image: ghcr.io/n8n-io/n8n-sandbox-service-api:1.8.1
+    container_name: sandbox-certs
+    user: '0:0'
+    entrypoint: ['sh', '-c']
+    command:
+      - >
+        bootstrap-mtls.sh --out-dir /tls --api-san sandbox-api
+        --control-san-prefix sandbox-runner --world-readable &&
+        chown -R sandbox-api:sandbox-api /tls/api && chmod -R a+rX /tls
+    environment:
+      NUM_RUNNERS: '1'
+    volumes:
+      - sandbox-tls:/tls
+    networks:
+      - lab-network
+
+  sandbox-api:
+    image: ghcr.io/n8n-io/n8n-sandbox-service-api:1.8.1
+    container_name: sandbox-api
+    restart: unless-stopped
+    depends_on:
+      sandbox-certs:
+        condition: service_completed_successfully
+    environment:
+      SANDBOX_API_KEYS: ${SANDBOX_API_KEY}
+      SANDBOX_API_RUNNER_REGISTRATION_TOKEN: ${SANDBOX_REGISTRATION_TOKEN}
+      SANDBOX_API_RUNNER_API_KEY: ${SANDBOX_RUNNER_KEY}
+      SANDBOX_API_GRPC_TLS_CERT_FILE: /tls/api/grpc-server.crt
+      SANDBOX_API_GRPC_TLS_KEY_FILE: /tls/api/grpc-server.key
+      SANDBOX_API_GRPC_TLS_CLIENT_CA_FILE: /tls/api/ca.crt
+      SANDBOX_API_RUNNER_CONTROL_GRPC_TLS_CA_FILE: /tls/api/ca.crt
+      SANDBOX_API_RUNNER_CONTROL_GRPC_TLS_CERT_FILE: /tls/api/control-grpc-api-client.crt
+      SANDBOX_API_RUNNER_CONTROL_GRPC_TLS_KEY_FILE: /tls/api/control-grpc-api-client.key
+      SANDBOX_API_RUNNER_CONTROL_GRPC_TLS_SERVER_NAME: sandbox-runner-1
+    volumes:
+      - sandbox-tls:/tls:ro
+    networks:
+      - lab-network
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://localhost:8080/healthz']
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+  sandbox-runner-1:
+    image: ghcr.io/n8n-io/n8n-sandbox-service-runner-dind:1.8.1
+    container_name: sandbox-runner-1
+    restart: unless-stopped
+    privileged: true
+    depends_on:
+      sandbox-api:
+        condition: service_healthy
+    environment:
+      SANDBOX_RUNNER_REGISTRATION_TOKEN: ${SANDBOX_REGISTRATION_TOKEN}
+      SANDBOX_RUNNER_API_KEYS: ${SANDBOX_RUNNER_KEY}
+      SANDBOX_RUNNER_API_GRPC_ADDR: sandbox-api:9090
+      SANDBOX_RUNNER_HTTP_BASE_URL: https://sandbox-runner-1:8080
+      SANDBOX_RUNNER_CONTROL_GRPC_LISTEN_ADDR: ':9091'
+      SANDBOX_RUNNER_CONTROL_GRPC_ADVERTISE_ADDR: sandbox-runner-1:9091
+      SANDBOX_RUNNER_ID: runner-1
+      SANDBOX_RUNNER_DOCKER_SANDBOX_IMAGE: ghcr.io/n8n-io/n8n-sandbox-service-sandbox:1.8.1
+      SANDBOX_RUNNER_REGISTRATION_GRPC_CA_FILE: /tls/runner/ca.crt
+      SANDBOX_RUNNER_REGISTRATION_GRPC_CERT_FILE: /tls/runner/grpc-client.crt
+      SANDBOX_RUNNER_REGISTRATION_GRPC_KEY_FILE: /tls/runner/grpc-client.key
+      SANDBOX_RUNNER_REGISTRATION_GRPC_SERVER_NAME: sandbox-api
+      SANDBOX_RUNNER_CONTROL_GRPC_TLS_CERT_FILE: /tls/runner/control-grpc-server.crt
+      SANDBOX_RUNNER_CONTROL_GRPC_TLS_KEY_FILE: /tls/runner/control-grpc-server.key
+      SANDBOX_RUNNER_CONTROL_GRPC_TLS_CLIENT_CA_FILE: /tls/runner/ca.crt
+    volumes:
+      - sandbox-tls:/tls:ro
+    networks:
+      - lab-network
+
 volumes:
   postgres-data:
   n8n-data:
   searxng-data:
   piston_isolate:
+  sandbox-tls:
 
 networks:
   lab-network:
