@@ -84,9 +84,9 @@ services:
     ports:
       - "127.0.0.1:8080:8080"
     environment:
-      - SEARXNG_SETTINGS_DIR=/etc/searxng
+      - SEARXNG_SECRET=${SEARXNG_SECRET}
     volumes:
-      - searxng-data:/etc/searxng
+      - ./config/searxng/settings.yml:/etc/searxng/settings.yml:ro
     depends_on:
       - redis
 
@@ -191,7 +191,6 @@ services:
 volumes:
   postgres-data:
   n8n-data:
-  searxng-data:
   piston_isolate:
   sandbox-tls:
 
