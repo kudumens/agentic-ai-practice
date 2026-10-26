@@ -17,6 +17,7 @@ Confidence tags: **[Certain]** checked on 2026-10-03 against this machine or a p
 | Redis | Docker | Cache for SearXNG |
 | SearXNG | Docker | Web search without an API key |
 | Piston | Docker | Code execution for agents (via custom entrypoint) |
+| n8n sandbox service | Docker | Sandbox for n8n Assistant (`sandbox-api` and a privileged `sandbox-runner-1`) |
 | Ollama | Natively on macOS | Serves the models with GPU acceleration |
 
 Ollama runs outside Docker because Docker Desktop on macOS cannot give containers access to the Apple GPU [Certain].
